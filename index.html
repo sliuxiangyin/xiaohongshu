@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<video id="myVideo"  src="./115.mp4" height="500" controls ></video>
+
+<script>
+    (() => {
+        if (window.__MediaCaptureController) return;
+        class MediaCaptureController {
+            constructor() {
+                this.videoMap = new Map(); // key: videoEl, value: { audioCtx, src, processor, canvas, ctx, rafId }
+            }
+
+            async start(videoEl = null) {
+                if (!videoEl) videoEl = document.querySelector('video');
+                if (!videoEl) throw new Error('no video element');
+                if (this.videoMap.has(videoEl)) return; // 已经在采集
+
+                const video = videoEl;
+
+                // ================== AUDIO ==================
+                video.muted = false;
+                video.volume = 1.0;
+                video.crossOrigin = 'anonymous';
+
+                const audioCtx = new AudioContext({ sampleRate: 48000 });
+                await audioCtx.resume();
+
+                const src = audioCtx.createMediaElementSource(video);
+                const processor = audioCtx.createScriptProcessor(4096, 2, 2);
+
+                src.connect(processor);
+                processor.connect(audioCtx.destination);
+
+                processor.audioprocess_event = e => {
+                    // if (!this.videoMap.has(video)) return;
+                    // if (video.paused) return;
+                    //
+                    // const input = e.inputBuffer;
+                    // const frames = input.length;
+                    // const ch0 = input.getChannelData(0);
+                    //
+                    // // energy gate
+                    // let energy = 0;
+                    // for (let i = 0; i < ch0.length; i++) {
+                    //     energy += Math.abs(ch0[i]);
+                    //     if (energy > 0.001) break;
+                    // }
+                    // if (energy <= 0.001) return;
+                    //
+                    // const pcm = new Float32Array(frames);
+                    // pcm.set(ch0);
+                    // console.log(pcm);
+                    // window?.__onVideoAudio?.({
+                    //     sampleRate: audioCtx.sampleRate,
+                    //     channels: 1,
+                    //     frames,
+                    //     buffer: pcm.buffer,
+                    //     ts: audioCtx.currentTime,
+                    // });
+                };
+
+                // ================== VIDEO ==================
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                let rafId = null;
+                let lastCaptureTime = 0;
+                const FPS = 1; // 每秒1帧
+                const INTERVAL = 1000 / FPS; // 1000ms
+
+                const captureFrame = () => {
+                    if (!this.videoMap.has(video)) return;
+
+                    const now = performance.now();
+
+                    if (now - lastCaptureTime >= INTERVAL) {
+                        if (video.readyState >= 2 && !video.paused) {
+                            const w = video.videoWidth;
+                            const h = video.videoHeight;
+
+                            if (w && h) {
+                                // 设置目标分辨率（示例：缩小到原尺寸的50%）
+                                const scale = 0.2; // 缩放比例，0.5表示50%
+                                const targetWidth = Math.floor(w * scale);
+                                const targetHeight = Math.floor(h * scale);
+
+                                // 设置canvas为缩小的尺寸
+                                canvas.width = targetWidth;
+                                canvas.height = targetHeight;
+
+                                // 绘制并缩小
+                                ctx.drawImage(video, 0, 0, w, h, 0, 0, targetWidth, targetHeight);
+
+                                // 获取Base64格式的压缩图片
+                                const compressedDataURL = canvas.toDataURL('image/jpeg', 0.8);
+                                console.log(compressedDataURL);
+                                // 移除DataURL前缀，只保留Base64数据
+                                const base64Data = compressedDataURL.split(',')[1];
+
+                                window?.__onVideoFrame?.({
+                                    width: targetWidth,  // 压缩后的宽度
+                                    height: targetHeight, // 压缩后的高度
+                                    data: base64Data,  // Base64编码的图片数据
+                                    ts: video.currentTime,
+                                    format: 'image/jpeg',
+                                    encoding: 'base64',  // 指定编码格式
+                                    originalWidth: w,  // 原始宽度（可选）
+                                    originalHeight: h,  // 原始高度（可选）
+                                });
+                            }
+                        }
+                        lastCaptureTime = now;
+                    }
+
+                    rafId = requestAnimationFrame(captureFrame);
+                };
+                // 保存状态
+                this.videoMap.set(video, { audioCtx, src, processor, canvas, ctx, rafId });
+                captureFrame();
+
+            }
+
+            stop(videoEl) {
+                if (!videoEl) return;
+                const state = this.videoMap.get(videoEl);
+                if (!state) return;
+
+                const { audioCtx, src, processor, rafId } = state;
+
+                if (rafId) cancelAnimationFrame(rafId);
+
+                if (processor) {
+                    processor.disconnect();
+                    processor.onaudioprocess = null;
+                }
+
+                if (src) src.disconnect();
+                if (audioCtx && audioCtx.state !== 'closed') audioCtx.suspend();
+
+                this.videoMap.delete(videoEl);
+            }
+
+            destroy(videoEl) {
+                if (!videoEl) return;
+
+                const state = this.videoMap.get(videoEl);
+                if (!state) return;
+
+                const { audioCtx, src, processor, rafId } = state;
+
+                if (rafId) cancelAnimationFrame(rafId);
+
+                if (processor) {
+                    processor.disconnect();
+                    processor.onaudioprocess = null;
+                }
+
+                if (src) src.disconnect();
+                if (audioCtx && audioCtx.state !== 'closed') audioCtx.close();
+
+                this.videoMap.delete(videoEl);
+            }
+
+            stopAll() {
+                for (const videoEl of this.videoMap.keys()) {
+                    this.stop(videoEl);
+                }
+            }
+
+            destroyAll() {
+                for (const videoEl of Array.from(this.videoMap.keys())) {
+                    this.destroy(videoEl);
+                }
+            }
+        }
+
+        window.__MediaCaptureController = new MediaCaptureController();
+    })();
+    document.addEventListener('DOMContentLoaded', function() {
+        const video = document.getElementById('myVideo');
+
+        // 点击视频时播放
+        video.addEventListener('click', function() {
+            if (video.paused) {
+                video.play();
+                window.__MediaCaptureController.start(document.querySelector("video"))
+
+            } else {
+                video.pause();
+            }
+        });
+
+
+    });
+
+</script>
+</body>
+</html>
