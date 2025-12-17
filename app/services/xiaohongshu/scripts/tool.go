@@ -2,7 +2,6 @@ package scripts
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -156,69 +155,7 @@ window.getActualHeight=getActualHeight;
 window.getElementInfo=getElementInfo;
 
 
-class MinimalClassDOMObserver {
-  constructor(className) {
-    this.className = className;
-    this.onAdd = [];
-    this.onRemove = [];
-    
-    this.observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        // 处理新增
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType === 1) this.processElement(node, 'add');
-        }
-        // 处理移除
-        for (const node of mutation.removedNodes) {
-          if (node.nodeType === 1) this.processElement(node, 'remove');
-        }
-      }
-    });
-    
-    this.observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-  }
-  
-  processElement(element, action) {
-    // 检查元素本身
-    if (element.classList && element.classList.contains(this.className)) {
-      this.trigger(element, action);
-    }
-    
-    // 检查后代
-    if (element.querySelectorAll) {
-      const children = element.querySelectorAll('.' + this.className);
-      for (const child of children) {
-        if (child !== element) { // 避免重复触发
-          this.trigger(child, action);
-        }
-      }
-    }
-  }
-  
-  trigger(element, action) {
-    const callbacks = action === 'add' ? this.onAdd : this.onRemove;
-    for (const callback of callbacks) {
-      callback(element);
-    }
-  }
-  
-  added(callback) {
-    this.onAdd.push(callback);
-    return this;
-  }
-  
-  removed(callback) {
-    this.onRemove.push(callback);
-    return this;
-  }
-  
-  stop() {
-    this.observer.disconnect();
-  }
-}
+
 `
 
 func GetElementInfo(selector playwright.Locator) (ElementInfo, error) {
@@ -295,97 +232,3 @@ func GetVideoFrame(element playwright.Locator, bindFunc string) error {
 
 	return err
 }
-
-// WatchClassElements 监控指定类名的div元素的添加和移除事件
-func WatchClassElements(page playwright.Page, className string, onAddCallback, onRemoveCallback func(string) error) error {
-	// 暴露添加回调函数到浏览器环境
-	err := page.ExposeFunction("__onElementAdded", func(args ...interface{}) interface{} {
-		if len(args) > 0 {
-			if elementId, ok := args[0].(string); ok {
-				if onAddCallback != nil {
-					onAddCallback(elementId)
-				}
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("暴露添加回调函数失败: %w", err)
-	}
-
-	// 暴露移除回调函数到浏览器环境
-	err = page.ExposeFunction("__onElementRemoved", func(args ...interface{}) interface{} {
-		if len(args) > 0 {
-			if elementId, ok := args[0].(string); ok {
-				if onRemoveCallback != nil {
-					onRemoveCallback(elementId)
-				}
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("暴露移除回调函数失败: %w", err)
-	}
-
-	// 在页面中执行监控脚本
-	script := fmt.Sprintf(`
-		(() => {
-			// 确保MinimalClassDOMObserver已定义
-			if (typeof MinimalClassDOMObserver !== 'undefined') {
-				// 创建观察器实例
-				const observer = new MinimalClassDOMObserver('%s');
-				
-				// 注册添加回调
-				observer.added((element) => {
-					// 为元素分配唯一ID（如果还没有的话）
-					if (!element.id) {
-						element.id = 'observed-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-					}
-					// 调用Go端的回调函数
-					window.__onElementAdded(element.id);
-				});
-				
-				// 注册移除回调
-				observer.removed((element) => {
-					// 调用Go端的回调函数
-					window.__onElementRemoved(element.id || 'unknown');
-				});
-			} else {
-				console.error('MinimalClassDOMObserver is not defined');
-			}
-		})();
-	`, className)
-
-	_, err = page.EvaluateHandle(script, nil)
-	if err != nil {
-		return fmt.Errorf("执行监控脚本失败: %w", err)
-	}
-
-	return nil
-}
-
-// // ExampleWatchClassElements 使用示例：监控特定类名元素的添加和移除
-// func ExampleWatchClassElements(page playwright.Page) error {
-// 	// 定义元素添加时的回调函数
-// 	onAdd := func(elementId string) error {
-// 		fmt.Printf("元素已添加，ID: %s\n", elementId)
-// 		// 在这里可以添加您需要的处理逻辑
-// 		return nil
-// 	}
-
-// 	// 定义元素移除时的回调函数
-// 	onRemove := func(elementId string) error {
-// 		fmt.Printf("元素已移除，ID: %s\n", elementId)
-// 		// 在这里可以添加您需要的处理逻辑
-// 		return nil
-// 	}
-
-// 	// 开始监控 "note-item" 类名的元素
-// 	err := WatchClassElements(page, "note-item", onAdd, onRemove)
-// 	if err != nil {
-// 		return fmt.Errorf("设置元素监控失败: %w", err)
-// 	}
-
-// 	return nil
-// }

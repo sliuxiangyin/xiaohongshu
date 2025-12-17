@@ -68,7 +68,7 @@ func (n *Note) Show() (NoteInfo, error) {
 	}
 	info.noteType = attribute
 	if info.noteType == "video" {
-		info.video = NewVideo(n.locator.Locator(".player-container "))
+		info.video = NewVideo(n.locator.Locator(".player-container"))
 
 	} else {
 		info.swiper = n.swiperHandler(n.locator.Locator(".swiper-slide:not(.swiper-slide-duplicate-active)"))

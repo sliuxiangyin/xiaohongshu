@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"embed"
 	"fmt"
 	"testing"
 	"xiaohongshu/app/infra/browser"
@@ -12,6 +13,9 @@ import (
 	"github.com/playwright-community/playwright-go"
 )
 
+//go:embed all:scripts
+var script embed.FS
+
 // TestXiaohongshuStartup 测试 Xiaohongshu 的 Startup 方法
 func TestXiaohongshuStartup(t *testing.T) {
 
@@ -20,7 +24,7 @@ func TestXiaohongshuStartup(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	service, err := services.NewXiaohongshuService(newBrowser.GetBrowser())
+	service, err := services.NewXiaohongshuService(newBrowser.GetBrowser(), script)
 	if err != nil {
 		panic(err)
 	}
@@ -30,6 +34,7 @@ func TestXiaohongshuStartup(t *testing.T) {
 	})
 	err = service.Start()
 	page := service.GetPage()
+	service.ListenNote()
 	err = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
 		State: playwright.LoadStateDomcontentloaded,
 	})
@@ -41,7 +46,7 @@ func TestXiaohongshuStartup(t *testing.T) {
 	if err != nil && len(feeds) > 0 {
 		return
 	}
-	page.Video()
+
 	err = feeds[0].Element.Selector.Click()
 	if err != nil {
 		return

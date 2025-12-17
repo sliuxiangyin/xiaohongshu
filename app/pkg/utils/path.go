@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -109,4 +110,12 @@ func getAppName() string {
 
 	// 方案4: 使用默认名称
 	return "xiaohongshu"
+}
+
+func ReadEmbeddedFile(fs embed.FS, filePath string) (string, error) {
+	data, err := fs.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }

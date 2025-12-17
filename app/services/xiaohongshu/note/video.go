@@ -1,7 +1,6 @@
 package note
 
 import (
-	"fmt"
 	"xiaohongshu/app/services/xiaohongshu/scripts"
 
 	"github.com/playwright-community/playwright-go"
@@ -95,9 +94,9 @@ func (v *Video) GetVideoState() (VideoState, error) {
 	return VideoState(readyState), nil
 }
 
-// ListenVideoState 监听视频播放状态变化
-func (v *Video) ListenVideoState(handler func(bool)) error {
-	err := scripts.MediaListenVideoState(v.videoElement, handler)
+// MediaVideoStateStart 监听视频播放状态变化
+func (v *Video) MediaVideoStateStart() error {
+	err := scripts.MediaListenVideoState(v.videoElement)
 	if err != nil {
 		return err
 	}
@@ -110,6 +109,11 @@ func (v *Video) RemoveVideoState() error {
 
 // MediaStart 启动媒体捕获
 func (v *Video) MediaStart() error {
+
+	err := v.MediaVideoStateStart()
+	if err != nil {
+		return err
+	}
 	// 启动媒体捕获
 	return scripts.MediaStart(v.videoElement)
 }
@@ -133,6 +137,14 @@ func (v *Video) MediaStopAll() error {
 func (v *Video) MediaDestroyAll() error {
 	return scripts.MediaDestroyAll(v.videoElement)
 }
+func (v *Video) ListenVideoState(handler func(bool2 bool)) error {
+	err := scripts.GetEventBus().Subscribe("media:video:state", func(state interface{}) {
+		if v, ok := state.(bool); ok {
+			handler(v)
+		}
+	})
+	return err
+}
 
 // ListenVideoFrame 订阅视频帧数据事件
 func (v *Video) ListenVideoFrame(handler func(VideoFrame)) error {
@@ -147,8 +159,6 @@ func (v *Video) ListenVideoFrame(handler func(VideoFrame)) error {
 // ListenVideoAudio 订阅视频音频数据事件
 func (v *Video) ListenVideoAudio(handler func(VideoAudio)) error {
 	err := scripts.GetEventBus().Subscribe("media:video:audio", func(audio interface{}) {
-
-		fmt.Println("订阅视频音频数据事件 media:video:audio ", audio)
 		if videoAudio, ok := audio.(VideoAudio); ok {
 			handler(videoAudio)
 		}

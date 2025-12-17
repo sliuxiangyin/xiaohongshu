@@ -2,6 +2,7 @@ package xiaohongshu
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"time"
 	"xiaohongshu/app/infra/app_context"
@@ -21,12 +22,14 @@ type Xiaohongshu struct {
 	service     *services.XiaohongshuService
 	page        playwright.Page
 	explorePage *explore.Explore
+	scriptPath  embed.FS
 }
 
 // NewXiaohongshu creates a new Xiaohongshu application struct
-func NewXiaohongshu(appContext *app_context.AppContext) *Xiaohongshu {
+func NewXiaohongshu(appContext *app_context.AppContext, scriptPath embed.FS) *Xiaohongshu {
 	return &Xiaohongshu{
 		appContext: appContext,
+		scriptPath: scriptPath,
 	}
 }
 
@@ -41,7 +44,7 @@ func (x *Xiaohongshu) OnDomReady(ctx context.Context) {
 		return
 	}
 	var err error
-	x.service, err = services.NewXiaohongshuService(x.appContext.GetPlaywrightBrowser())
+	x.service, err = services.NewXiaohongshuService(x.appContext.GetPlaywrightBrowser(), x.scriptPath)
 	if err != nil {
 		return
 	}
@@ -50,10 +53,7 @@ func (x *Xiaohongshu) OnDomReady(ctx context.Context) {
 		return
 	}
 	x.page = x.service.GetPage()
-	fmt.Println("55555555555555555")
-
 	x.explorePage = explore.NewExplore(x.page)
-	fmt.Println("OnDomReady1111")
 	// 监听用户登录事件
 	eventbus.GlobalEventBus.Subscribe("user-logged-in", func(userInfo interface{}) {
 		runtime.EventsEmit(ctx, "user-logged-in", userInfo)
@@ -119,6 +119,11 @@ func (x *Xiaohongshu) OnItemClick(index int) error {
 	if err != nil {
 		return err
 	}
+
+	if err != nil {
+		fmt.Println(fmt.Sprintf("watch playwright error: %v", err))
+		return err
+	}
 	err = feed.Element.Click()
 	if err != nil {
 		return err
@@ -129,7 +134,7 @@ func (x *Xiaohongshu) OnItemClick(index int) error {
 		fmt.Println(fmt.Sprintf("failed to get new note: %v", err))
 		return err
 	}
-	fmt.Println(fmt.Sprintf("New note: %+v", newNote))
+
 	video := newNote.Video()
 	if video == nil {
 		fmt.Println(fmt.Sprintf("New video is nil"))
@@ -140,8 +145,8 @@ func (x *Xiaohongshu) OnItemClick(index int) error {
 		fmt.Println(fmt.Sprintf("failed to start video: %v", err))
 		return err
 	}
-
 	err = video.ListenVideoState(func(b bool) {
+
 		if video.IsMute() {
 			video.ToggleVolume()
 		}
@@ -154,9 +159,8 @@ func (x *Xiaohongshu) OnItemClick(index int) error {
 	}
 
 	err = video.ListenVideoAudio(func(audio note.VideoAudio) {
-		fmt.Println(fmt.Sprintf("New audio listenedddddddd: %+v", audio))
+		fmt.Println(fmt.Sprintf("New audio listenedddddddd: %+v", audio.Buffer))
 	})
-
 	err = video.MediaStart()
 	if err != nil {
 		fmt.Println(fmt.Sprintf("failed to start media: %v", err))

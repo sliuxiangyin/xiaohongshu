@@ -22,7 +22,7 @@ func main() {
 	// Create an instance of the app structure
 	appContext := app_context.NewContext()
 	appBind := app.NewApp(appContext)
-	xiaohongshuBind := xiaohongshu.NewXiaohongshu(appContext)
+	xiaohongshuBind := xiaohongshu.NewXiaohongshu(appContext, script)
 
 	// Create application with options
 	err := wails.Run(&options.App{

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,9 +20,11 @@ type XiaohongshuService struct {
 	page              playwright.Page
 	accountCookiePath *string
 	cookiePath        string
+	scriptsPath       embed.FS
+	observer          *scripts2.ClassDOMObserver
 }
 
-func NewXiaohongshuService(browser playwright.Browser) (*XiaohongshuService, error) {
+func NewXiaohongshuService(browser playwright.Browser, scriptsPath embed.FS) (*XiaohongshuService, error) {
 	directory, err := utils.GetDefaultCacheDirectory()
 	if err != nil {
 		return nil, err
@@ -38,10 +41,12 @@ func NewXiaohongshuService(browser playwright.Browser) (*XiaohongshuService, err
 		accountCookiePath = nil
 	}
 	scripts2.InitEventBus()
+
 	return &XiaohongshuService{
 		browser:           browser,
 		accountCookiePath: accountCookiePath,
 		cookiePath:        cookiePath,
+		scriptsPath:       scriptsPath,
 	}, nil
 }
 
@@ -54,6 +59,12 @@ func (s *XiaohongshuService) Start() error {
 		return err
 	}
 	s.page, err = context.NewPage()
+	if err != nil {
+		return err
+	}
+
+	// 设置视口大小，模拟真实浏览器
+	err = s.page.SetViewportSize(1366, 768)
 	if err != nil {
 		return err
 	}
@@ -76,12 +87,33 @@ func (s *XiaohongshuService) Start() error {
 	_ = s.page.AddInitScript(playwright.Script{
 		Content: &js,
 	})
-	// 设置视口大小，模拟真实浏览器
-	err = s.page.SetViewportSize(1366, 768)
+
+	classDomObserverService, _ := utils.ReadEmbeddedFile(s.scriptsPath, "scripts/class_dom_observer.js")
+	_ = s.page.AddInitScript(playwright.Script{
+		Content: &classDomObserverService,
+	})
+	mediaCaptureContent, _ := utils.ReadEmbeddedFile(s.scriptsPath, "scripts/media_capture.js")
+	_ = scripts2.InjectMediaCaptureScript(s.page, mediaCaptureContent)
+
+	s.observer = scripts2.CreateClassDOMObserver(s.page)
+	err = s.observer.Start("note-detail-mask")
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
-	_ = scripts2.InjectMediaCaptureScript(s.page)
+	s.page.On("load", func() {
+		go func() {
+			_ = s.observer.UnobserveAll()
+			_, err = s.observer.Observe()
+			if err != nil {
+				fmt.Println(err)
+			}
+		}()
+	})
+	s.page.On("domcontentloaded", func() {
+		fmt.Println("domcontentloaded")
+	})
+	s.page.OnResponse(s.onResponse)
 	// 导航到页面
 	_, err = s.page.Goto("https://www.xiaohongshu.com")
 	if err != nil {
@@ -89,7 +121,6 @@ func (s *XiaohongshuService) Start() error {
 		return err
 	}
 
-	s.page.OnResponse(s.onResponse)
 	return err
 }
 
@@ -97,6 +128,14 @@ func (s *XiaohongshuService) GetPage() playwright.Page {
 	return s.page
 }
 
+func (s *XiaohongshuService) ListenNote() {
+	_ = s.observer.OnAdd(func(string2 string) {
+		fmt.Println(fmt.Sprintf("Note added: %s", string2))
+	})
+	_ = s.observer.OnRemove(func(string2 string) {
+		fmt.Println(fmt.Sprintf("Note removed: %s", string2))
+	})
+}
 func (s *XiaohongshuService) onResponse(response playwright.Response) {
 	// 检查URL是否包含v2/user/me
 	go s.me(response)
