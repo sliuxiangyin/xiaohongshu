@@ -51,12 +51,13 @@ func (n NoteInfo) Video() *Video {
 }
 
 type Note struct {
-	locator playwright.Locator
+	locator      playwright.Locator
+	mediaCapture *scripts.MediaCapture
 }
 
-func NewNote(page playwright.Page) *Note {
+func NewNote(page playwright.Page, mediaCapture *scripts.MediaCapture) *Note {
 	locator := page.Locator("#noteContainer")
-	return &Note{locator: locator}
+	return &Note{locator: locator, mediaCapture: mediaCapture}
 }
 
 func (n *Note) Show() (NoteInfo, error) {
@@ -68,8 +69,10 @@ func (n *Note) Show() (NoteInfo, error) {
 	}
 	info.noteType = attribute
 	if info.noteType == "video" {
-		info.video = NewVideo(n.locator.Locator(".player-container"))
-
+		info.video = NewVideo(
+			n.locator.Locator(".player-container"),
+			n.mediaCapture,
+		)
 	} else {
 		info.swiper = n.swiperHandler(n.locator.Locator(".swiper-slide:not(.swiper-slide-duplicate-active)"))
 	}

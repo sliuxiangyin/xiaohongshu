@@ -38,13 +38,20 @@ const (
 type Video struct {
 	locator      playwright.Locator
 	videoElement playwright.Locator
+	mediaCapture *scripts.MediaCapture
 }
 
-func NewVideo(locator playwright.Locator) *Video {
+func NewVideo(locator playwright.Locator, mediaCapture *scripts.MediaCapture) *Video {
 	return &Video{
+		mediaCapture: mediaCapture,
 		locator:      locator,
 		videoElement: locator.Locator("video"),
 	}
+}
+
+func (v *Video) Start() error {
+	err := v.mediaCapture.Start(v.videoElement)
+	return err
 }
 
 //player-el xgplayer xgplayer-pc xhsplayer-skin-default xgplayer-pause xgplayer-volume-muted
@@ -94,49 +101,6 @@ func (v *Video) GetVideoState() (VideoState, error) {
 	return VideoState(readyState), nil
 }
 
-// MediaVideoStateStart 监听视频播放状态变化
-func (v *Video) MediaVideoStateStart() error {
-	err := scripts.MediaListenVideoState(v.videoElement)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (v *Video) RemoveVideoState() error {
-	return scripts.MediaRemoveVideoStateListener(v.videoElement)
-}
-
-// MediaStart 启动媒体捕获
-func (v *Video) MediaStart() error {
-
-	err := v.MediaVideoStateStart()
-	if err != nil {
-		return err
-	}
-	// 启动媒体捕获
-	return scripts.MediaStart(v.videoElement)
-}
-
-// MediaStop 停止媒体捕获
-func (v *Video) MediaStop() error {
-	return scripts.MediaStop(v.videoElement)
-}
-
-// MediaDestroy 销毁媒体捕获
-func (v *Video) MediaDestroy() error {
-	return scripts.MediaDestroy(v.videoElement)
-}
-
-// MediaStopAll 停止所有媒体捕获
-func (v *Video) MediaStopAll() error {
-	return scripts.MediaStopAll(v.videoElement)
-}
-
-// MediaDestroyAll 销毁所有媒体捕获
-func (v *Video) MediaDestroyAll() error {
-	return scripts.MediaDestroyAll(v.videoElement)
-}
 func (v *Video) ListenVideoState(handler func(bool2 bool)) error {
 	err := scripts.GetEventBus().Subscribe("media:video:state", func(state interface{}) {
 		if v, ok := state.(bool); ok {

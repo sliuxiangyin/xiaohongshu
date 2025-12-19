@@ -120,58 +120,28 @@ func (x *Xiaohongshu) OnItemClick(index int) error {
 		return err
 	}
 
-	if err != nil {
-		fmt.Println(fmt.Sprintf("watch playwright error: %v", err))
-		return err
-	}
 	err = feed.Element.Click()
 	if err != nil {
 		return err
 	}
 	time.Sleep(time.Second * 1)
-	newNote, err := note.NewNote(x.page).Show()
+	newNote, err := note.NewNote(x.page, x.service.MediaCapture()).Show()
 	if err != nil {
 		fmt.Println(fmt.Sprintf("failed to get new note: %v", err))
 		return err
 	}
-
+	fmt.Println(fmt.Sprintf("new note: %+v", newNote))
 	video := newNote.Video()
 	if video == nil {
 		fmt.Println(fmt.Sprintf("New video is nil"))
 		return nil
 	}
-	err = video.MediaStart()
+	err = video.Start()
 	if err != nil {
-		fmt.Println(fmt.Sprintf("failed to start video: %v", err))
 		return err
 	}
-	err = video.ListenVideoState(func(b bool) {
-
-		if video.IsMute() {
-			video.ToggleVolume()
-		}
-		fmt.Println(fmt.Sprintf("New video listened: %+v", b))
-		fmt.Println(fmt.Sprintf("IsMute: %v", video.IsMute()))
+	video.ListenVideoFrame(func(frame note.VideoFrame) {
+		fmt.Println(fmt.Sprintf("New video frame %+v", frame))
 	})
-	if err != nil {
-		fmt.Println(fmt.Sprintf("failed to listen: %v", err))
-		return err
-	}
-
-	err = video.ListenVideoAudio(func(audio note.VideoAudio) {
-		fmt.Println(fmt.Sprintf("New audio listenedddddddd: %+v", audio.Buffer))
-	})
-	err = video.MediaStart()
-	if err != nil {
-		fmt.Println(fmt.Sprintf("failed to start media: %v", err))
-		return err
-	}
-	err = video.ListenVideoFrame(func(frame note.VideoFrame) {
-		fmt.Println(fmt.Sprintf("New frame listeneddddddddddd: %+v", frame.Data))
-	})
-	if err != nil {
-		fmt.Println(fmt.Sprintf("failed to listen: %v", err))
-		return err
-	}
 	return nil
 }

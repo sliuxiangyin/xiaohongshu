@@ -22,6 +22,12 @@ type XiaohongshuService struct {
 	cookiePath        string
 	scriptsPath       embed.FS
 	observer          *scripts2.ClassDOMObserver
+
+	mediaCapture *scripts2.MediaCapture
+}
+
+func (s *XiaohongshuService) MediaCapture() *scripts2.MediaCapture {
+	return s.mediaCapture
 }
 
 func NewXiaohongshuService(browser playwright.Browser, scriptsPath embed.FS) (*XiaohongshuService, error) {
@@ -30,7 +36,6 @@ func NewXiaohongshuService(browser playwright.Browser, scriptsPath embed.FS) (*X
 		return nil, err
 	}
 	cookiePath := path.Join(directory, "xiaohongshu.cookies")
-
 	// 检查 cookie 文件是否存在
 	var accountCookiePath *string
 	if _, err := os.Stat(cookiePath); err == nil {
@@ -88,17 +93,22 @@ func (s *XiaohongshuService) Start() error {
 		Content: &js,
 	})
 
+	// 启动监听视频监听
+	mediaCaptureContent, _ := utils.ReadEmbeddedFile(s.scriptsPath, "scripts/media_capture.js")
+	s.mediaCapture = scripts2.NewMediaCapture(s.page)
+	err = s.mediaCapture.InjectScript(mediaCaptureContent)
+	if err != nil {
+		return err
+	}
+
+	//启动note 监听
 	classDomObserverService, _ := utils.ReadEmbeddedFile(s.scriptsPath, "scripts/class_dom_observer.js")
 	_ = s.page.AddInitScript(playwright.Script{
 		Content: &classDomObserverService,
 	})
-	mediaCaptureContent, _ := utils.ReadEmbeddedFile(s.scriptsPath, "scripts/media_capture.js")
-	_ = scripts2.InjectMediaCaptureScript(s.page, mediaCaptureContent)
-
 	s.observer = scripts2.CreateClassDOMObserver(s.page)
 	err = s.observer.Start("note-detail-mask")
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
 	s.page.On("load", func() {
@@ -117,7 +127,6 @@ func (s *XiaohongshuService) Start() error {
 	// 导航到页面
 	_, err = s.page.Goto("https://www.xiaohongshu.com")
 	if err != nil {
-		fmt.Println(fmt.Sprintf("GotoURL err: %s", err))
 		return err
 	}
 

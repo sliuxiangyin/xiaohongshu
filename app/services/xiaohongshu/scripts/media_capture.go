@@ -24,8 +24,21 @@ type VideoAudio struct {
 	Ts         float64     `json:"ts"`
 }
 
-// MediaStart 启动媒体捕获
-func MediaStart(element playwright.Locator) error {
+// MediaCapture 媒体捕获类
+type MediaCapture struct {
+	page   playwright.Page
+	frames []VideoFrame
+}
+
+// NewMediaCapture 创建新的媒体捕获实例
+func NewMediaCapture(page playwright.Page) *MediaCapture {
+	return &MediaCapture{
+		page: page,
+	}
+}
+
+// Start 启动媒体捕获
+func (mc *MediaCapture) Start(element playwright.Locator) error {
 	// 首先检查MediaCaptureController是否存在
 	exists, err := element.Evaluate(`(videoEl) => {
 		return window.__MediaCaptureController !== undefined;
@@ -44,24 +57,24 @@ func MediaStart(element playwright.Locator) error {
 	return err
 }
 
-// MediaStop 停止媒体捕获
-func MediaStop(element playwright.Locator) error {
+// Stop 停止媒体捕获
+func (mc *MediaCapture) Stop(element playwright.Locator) error {
 	_, err := element.EvaluateHandle(`(element) => {
 		window.__MediaCaptureController.stop(element);
 	}`, nil)
 	return err
 }
 
-// MediaDestroy 销毁媒体捕获
-func MediaDestroy(element playwright.Locator) error {
+// Destroy 销毁媒体捕获
+func (mc *MediaCapture) Destroy(element playwright.Locator) error {
 	_, err := element.EvaluateHandle(`(element) => {
 window.__MediaCaptureController.destroy(element);
 	}`, nil)
 	return err
 }
 
-// MediaStopAll 停止所有媒体捕获
-func MediaStopAll(element playwright.Locator) error {
+// StopAll 停止所有媒体捕获
+func (mc *MediaCapture) StopAll(element playwright.Locator) error {
 
 	_, err := element.EvaluateHandle(`(element) => {
 window.__MediaCaptureController.stopAll();
@@ -69,8 +82,8 @@ window.__MediaCaptureController.stopAll();
 	return err
 }
 
-// MediaDestroyAll 销毁所有媒体捕获
-func MediaDestroyAll(element playwright.Locator) error {
+// DestroyAll 销毁所有媒体捕获
+func (mc *MediaCapture) DestroyAll(element playwright.Locator) error {
 
 	_, err := element.EvaluateHandle(`(element) => {
 window.__MediaCaptureController.destroyAll(element);
@@ -78,8 +91,8 @@ window.__MediaCaptureController.destroyAll(element);
 	return err
 }
 
-// MediaListenVideoState  监听视频播放状态变化
-func MediaListenVideoState(element playwright.Locator) error {
+// ListenVideoState  监听视频播放状态变化
+func (mc *MediaCapture) ListenVideoState(element playwright.Locator) error {
 
 	_, err := element.EvaluateHandle(`
 		(video) => {
@@ -108,8 +121,8 @@ func MediaListenVideoState(element playwright.Locator) error {
 	return err
 }
 
-// MediaRemoveVideoStateListener 移除视频状态监听
-func MediaRemoveVideoStateListener(element playwright.Locator) error {
+// RemoveVideoStateListener 移除视频状态监听
+func (mc *MediaCapture) RemoveVideoStateListener(element playwright.Locator) error {
 	page, err := element.Page()
 	if err != nil {
 		return err
@@ -142,11 +155,11 @@ func MediaRemoveVideoStateListener(element playwright.Locator) error {
 	return err
 }
 
-// InjectMediaCaptureScript 注入媒体捕获脚本到页面
-func InjectMediaCaptureScript(page playwright.Page, scriptContent string) error {
+// InjectScript 注入媒体捕获脚本到页面
+func (mc *MediaCapture) InjectScript(scriptContent string) error {
 	var err error
 	// 暴露回调函数给浏览器
-	err = page.ExposeFunction("__onVideoStateChange", func(args ...interface{}) interface{} {
+	err = mc.page.ExposeFunction("__onVideoStateChange", func(args ...interface{}) interface{} {
 		if len(args) > 0 {
 			if isPlaying, ok := args[0].(bool); ok {
 				GetEventBus().Publish("media:video:state", isPlaying)
@@ -158,7 +171,7 @@ func InjectMediaCaptureScript(page playwright.Page, scriptContent string) error 
 		return err
 	}
 	// 首先获取页面实例
-	err = page.ExposeFunction("__onVideoFrame", func(args ...interface{}) interface{} {
+	err = mc.page.ExposeFunction("__onVideoFrame", func(args ...interface{}) interface{} {
 		if len(args) > 0 {
 			if data, ok := args[0].(map[string]interface{}); ok {
 				frame := VideoFrame{
@@ -167,9 +180,11 @@ func InjectMediaCaptureScript(page playwright.Page, scriptContent string) error 
 					Data:   data["data"],
 					Ts:     cast.ToFloat64(data["ts"]),
 				}
+				fmt.Println(frame)
+				fmt.Println(data["data"])
 				// 通过事件总线发送视频帧数据
 				fmt.Println("media:video:frame", GetEventBus().HasCallback("media:video:frame"))
-				GetEventBus().Publish("media:video:frame", frame)
+				//GetEventBus().Publish("media:video:frame", frame)
 			}
 		}
 		return nil
@@ -178,7 +193,7 @@ func InjectMediaCaptureScript(page playwright.Page, scriptContent string) error 
 		return err
 	}
 	// 暴露__onVideoAudio回调函数到浏览器环境
-	err = page.ExposeFunction("__onVideoAudio", func(args ...interface{}) interface{} {
+	err = mc.page.ExposeFunction("__onVideoAudio", func(args ...interface{}) interface{} {
 		if len(args) > 0 {
 			if data, ok := args[0].(map[string]interface{}); ok {
 				audio := VideoAudio{
@@ -198,7 +213,7 @@ func InjectMediaCaptureScript(page playwright.Page, scriptContent string) error 
 	if err != nil {
 		return err
 	}
-	err = page.AddInitScript(playwright.Script{
+	err = mc.page.AddInitScript(playwright.Script{
 		Content: &scriptContent,
 	})
 	return err

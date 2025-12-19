@@ -52,7 +52,7 @@ func TestXiaohongshuStartup(t *testing.T) {
 		return
 	}
 
-	newNote := note.NewNote(service.GetPage())
+	newNote := note.NewNote(service.GetPage(), service.MediaCapture())
 	noteInfo, err := newNote.Show()
 	if err != nil {
 		return
